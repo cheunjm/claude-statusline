@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint scripts
+        run: shellcheck statusline.sh install.sh
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Test — full data
+        run: |
+          output=$(echo '{"workspace":{"current_dir":"/tmp/test"},"model":{"display_name":"Claude Opus 4.6 (1M context)"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":84000,"cache_read_input_tokens":65000,"cache_creation_input_tokens":5000},"context_window_size":200000},"cost":{"total_cost_usd":1.23,"total_duration_ms":723000},"rate_limits":{"five_hour":{"used_percentage":34.5},"seven_day":{"used_percentage":12.8}}}' | sh statusline.sh)
+          echo "$output"
+          echo "$output" | grep -q "opus" || { echo "FAIL: model not found"; exit 1; }
+          echo "$output" | grep -q "154k/200k" || { echo "FAIL: context not found"; exit 1; }
+          echo "$output" | grep -q "5h:" || { echo "FAIL: rate limit not found"; exit 1; }
+          echo "PASS: full data"
+
+      - name: Test — minimal data
+        run: |
+          output=$(echo '{"workspace":{"current_dir":"/tmp/test"},"model":{"display_name":"Claude Haiku 4.5"},"context_window":{"used_percentage":5},"cost":{"total_cost_usd":0.003,"total_duration_ms":15000}}' | sh statusline.sh)
+          echo "$output"
+          echo "$output" | grep -q "haiku" || { echo "FAIL: model not found"; exit 1; }
+          echo "PASS: minimal data"
+
+      - name: Test — empty input
+        run: |
+          output=$(echo '{}' | sh statusline.sh)
+          echo "$output"
+          [ -n "$output" ] || { echo "FAIL: no output on empty input"; exit 1; }
+          echo "PASS: empty input"
+
+      - name: Test — config override
+        run: |
+          echo "SHOW_RATE_LIMITS=false" > /tmp/test-statusline.conf
+          echo "SHOW_DURATION=false" > /tmp/test-statusline.conf
+          output=$(STATUSLINE_CONF=/tmp/test-statusline.conf echo '{"workspace":{"current_dir":"/tmp/test"},"model":{"display_name":"Claude Opus 4.6"},"context_window":{"used_percentage":42},"cost":{"total_cost_usd":1.23,"total_duration_ms":723000},"rate_limits":{"five_hour":{"used_percentage":34}}}' | sh statusline.sh)
+          echo "$output"
+          echo "PASS: config override"
