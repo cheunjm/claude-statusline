@@ -26,6 +26,7 @@ GIT_CACHE_TTL=5
 input=$(cat)
 
 # Batch extract all JSON fields in a single jq call
+# shellcheck disable=SC2034
 eval "$(echo "$input" | jq -r '
   "cwd='"'"'\(.workspace.current_dir // .cwd // "")'"'"'",
   "model_full='"'"'\(.model.display_name // "")'"'"'",
@@ -44,9 +45,10 @@ eval "$(echo "$input" | jq -r '
 
 # Shorten cwd: replace $HOME with ~
 home_dir="$HOME"
-short_dir="${cwd/#$home_dir/\~}"
+short_dir=$(echo "$cwd" | sed "s|^$home_dir|~|")
 
 # Compact model name: "Claude Opus 4.6 (1M context)" → "opus"
+# shellcheck disable=SC2154
 model=$(echo "$model_full" | sed 's/^Claude //' | sed 's/ [0-9].*//' | tr '[:upper:]' '[:lower:]')
 
 # Git branch — cached to avoid repeated subprocess overhead
@@ -60,7 +62,8 @@ if [ "$SHOW_GIT" = "true" ] && [ -n "$cwd" ]; then
   cache_valid=""
   if [ -f "${CACHE_FILE}" ]; then
     # macOS uses stat -f %m, Linux uses stat -c %Y
-    cache_mtime=$(stat -f %m "${CACHE_FILE}" 2>/dev/null || stat -c %Y "${CACHE_FILE}" 2>/dev/null || echo 0)
+    # stat -f on Linux outputs filesystem info (not mtime), so try -c first
+    cache_mtime=$(stat -c %Y "${CACHE_FILE}" 2>/dev/null || stat -f %m "${CACHE_FILE}" 2>/dev/null || echo 0)
     cache_age=$(( $(date +%s) - cache_mtime ))
     if [ "$cache_age" -lt "$GIT_CACHE_TTL" ] 2>/dev/null; then
       cache_valid=1
@@ -144,6 +147,9 @@ if [ -n "$git_branch" ]; then
   if [ -n "$wt_label" ]; then
     printf "\033[36m[%s] \033[0m" "$wt_label"
   fi
+  if [ -n "$issue_id" ]; then
+    printf "\033[36m[%s] \033[0m" "$issue_id"
+  fi
   printf "\033[35m%s\033[0m" "$git_branch"
 fi
 
@@ -177,7 +183,7 @@ if [ -n "$cost" ]; then
   cost_frac="${cost#*.}"
   [ "$cost_whole" = "$cost" ] && cost_frac="00"
   cost_frac3=$(printf "%.3s" "${cost_frac}000")
-  cost_millis=$((cost_whole * 1000 + ${cost_frac3}))
+  cost_millis=$((cost_whole * 1000 + cost_frac3))
 
   if [ "$cost_millis" -lt 10 ] 2>/dev/null; then
     cost_fmt=$(printf "\$0.%s" "$cost_frac3")

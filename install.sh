@@ -39,7 +39,7 @@ if [ ! -f "$SETTINGS" ]; then
 fi
 
 # Check if statusLine is already configured
-if echo "$(cat "$SETTINGS")" | jq -e '.statusLine' >/dev/null 2>&1; then
+if jq -e '.statusLine' < "$SETTINGS" >/dev/null 2>&1; then
   echo ""
   printf "statusLine already configured in settings.json. Overwrite? [y/N] "
   read -r answer
