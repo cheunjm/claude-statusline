@@ -1,8 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 # claude-statusline — A lightweight, single-line statusline for Claude Code
 # https://github.com/cheunjm/claude-statusline
 #
-# Format: [agent|task] · dir · ⎥ [ISSUE-ID] branch · model · tokens · $cost · 5h:X% 7d:Y% · ⚡cache% · Nm
+# Format: [agent|task] · dir · ⎥ [ISSUE-ID] branch · [CI #N] · model · tokens · $cost · 5h:X% 7d:Y% · ⚡cache% · Nm
+
+# Ensure tools like jq, git are available (Claude runs with minimal PATH)
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:$PATH"
 
 # Load config (KEY=value format, all optional)
 STATUSLINE_CONF="${STATUSLINE_CONF:-$HOME/.claude/statusline.conf}"
@@ -26,7 +29,6 @@ GIT_CACHE_TTL=5
 input=$(cat)
 
 # Batch extract all JSON fields in a single jq call
-# shellcheck disable=SC2034
 eval "$(echo "$input" | jq -r '
   "cwd='"'"'\(.workspace.current_dir // .cwd // "")'"'"'",
   "model_full='"'"'\(.model.display_name // "")'"'"'",
@@ -45,7 +47,7 @@ eval "$(echo "$input" | jq -r '
 
 # Shorten cwd: replace $HOME with ~
 home_dir="$HOME"
-short_dir=$(echo "$cwd" | sed "s|^$home_dir|~|")
+short_dir="${cwd/#$home_dir/\~}"
 
 # Compact model name: "Claude Opus 4.6 (1M context)" → "opus"
 # shellcheck disable=SC2154
@@ -62,8 +64,7 @@ if [ "$SHOW_GIT" = "true" ] && [ -n "$cwd" ]; then
   cache_valid=""
   if [ -f "${CACHE_FILE}" ]; then
     # macOS uses stat -f %m, Linux uses stat -c %Y
-    # stat -f on Linux outputs filesystem info (not mtime), so try -c first
-    cache_mtime=$(stat -c %Y "${CACHE_FILE}" 2>/dev/null || stat -f %m "${CACHE_FILE}" 2>/dev/null || echo 0)
+    cache_mtime=$(stat -f %m "${CACHE_FILE}" 2>/dev/null || stat -c %Y "${CACHE_FILE}" 2>/dev/null || echo 0)
     cache_age=$(( $(date +%s) - cache_mtime ))
     if [ "$cache_age" -lt "$GIT_CACHE_TTL" ] 2>/dev/null; then
       cache_valid=1
@@ -71,8 +72,9 @@ if [ "$SHOW_GIT" = "true" ] && [ -n "$cwd" ]; then
   fi
 
   if [ -n "$cache_valid" ]; then
-    git_branch=$(head -1 "${CACHE_FILE}" 2>/dev/null)
-    is_worktree=$(tail -1 "${CACHE_FILE}" 2>/dev/null)
+    git_branch=$(sed -n '1p' "${CACHE_FILE}" 2>/dev/null)
+    is_worktree=$(sed -n '2p' "${CACHE_FILE}" 2>/dev/null)
+    git_common=$(sed -n '3p' "${CACHE_FILE}" 2>/dev/null)
     [ "$is_worktree" = "$git_branch" ] && is_worktree=""
   else
     git_info=$(git -C "$cwd" --no-optional-locks rev-parse --abbrev-ref HEAD --git-dir --git-common-dir 2>/dev/null)
@@ -84,13 +86,31 @@ if [ "$SHOW_GIT" = "true" ] && [ -n "$cwd" ]; then
         is_worktree=$(basename "$cwd")
       fi
     fi
-    printf "%s\n%s\n" "$git_branch" "$is_worktree" > "${CACHE_FILE}" 2>/dev/null
+    printf "%s\n%s\n%s\n" "$git_branch" "$is_worktree" "$git_common" > "${CACHE_FILE}" 2>/dev/null
+  fi
+fi
+
+# Detect applied worktree patch (from scripts/worktree.sh apply)
+applied_patch_id=""
+if [ -n "$git_common" ]; then
+  # Resolve relative git_common against cwd
+  case "$git_common" in
+    /*) applied_dir="$git_common/applied-patch" ;;
+    *)  applied_dir="$cwd/$git_common/applied-patch" ;;
+  esac
+  if [ -d "$applied_dir" ]; then
+    patch_file=$(find "$applied_dir" -maxdepth 1 -name '*.patch' 2>/dev/null | head -1)
+    if [ -n "$patch_file" ]; then
+      applied_patch_id=$(basename "$patch_file" .patch)
+    fi
   fi
 fi
 
 # Extract issue ID from branch (e.g. feat/INF-60-title → INF-60, fix/PROJ-123-bug → PROJ-123)
+# shellcheck disable=SC2034
 issue_id=""
 if [ "$SHOW_ISSUE_ID" = "true" ] && [ -n "$git_branch" ]; then
+  # shellcheck disable=SC2034
   issue_id=$(echo "$git_branch" | grep -oE '[A-Z]{2,}-[0-9]+' | head -1)
 fi
 
@@ -147,10 +167,25 @@ if [ -n "$git_branch" ]; then
   if [ -n "$wt_label" ]; then
     printf "\033[36m[%s] \033[0m" "$wt_label"
   fi
-  if [ -n "$issue_id" ]; then
-    printf "\033[36m[%s] \033[0m" "$issue_id"
-  fi
   printf "\033[35m%s\033[0m" "$git_branch"
+fi
+
+# APPLIED PATCH badge (yellow — shows when a worktree patch is applied to main)
+if [ -n "$applied_patch_id" ]; then
+  printf "%b\033[33m\xe2\x8e\x87 %s\xe2\x86\x92main\033[0m" "$SEP" "$applied_patch_id"
+fi
+
+# CI WATCH (animated spinner when gh pr checks is running)
+ci_pid=$(pgrep -f "gh pr checks" 2>/dev/null | head -1)
+if [ -n "$ci_pid" ]; then
+  ci_args=$(ps -p "$ci_pid" -o args= 2>/dev/null)
+  ci_pr=$(echo "$ci_args" | grep -oE 'checks[[:space:]]+([0-9]+)' | grep -oE '[0-9]+')
+  spin_chars=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+  spin_idx=$(( $(date +%s) % 10 ))
+  spin_char="${spin_chars[$spin_idx]}"
+  ci_label="CI"
+  [ -n "$ci_pr" ] && ci_label="CI #${ci_pr}"
+  printf "%b\033[33m%s %s\033[0m" "$SEP" "$spin_char" "$ci_label"
 fi
 
 # MODEL (blue)
