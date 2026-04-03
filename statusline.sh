@@ -24,6 +24,7 @@ RATE_WARN_PCT=60
 RATE_CRIT_PCT=85
 GIT_CACHE_TTL=5
 SPEND_LOG=""
+CLAUDE_JSON="${CLAUDE_JSON:-$HOME/.claude.json}"
 # shellcheck disable=SC1090
 [ -f "$STATUSLINE_CONF" ] && . "$STATUSLINE_CONF"
 
@@ -189,9 +190,17 @@ if [ -n "$ci_pid" ]; then
   printf "%b\033[33m%s %s\033[0m" "$SEP" "$spin_char" "$ci_label"
 fi
 
-# MODEL (blue)
+# MODEL + BILLING TYPE (blue)
 if [ -n "$model" ]; then
-  printf "%b\033[34m%s\033[0m" "$SEP" "$model"
+  billing_label=""
+  if [ -f "$CLAUDE_JSON" ]; then
+    billing_type=$(jq -r '.oauthAccount.billingType // ""' "$CLAUDE_JSON" 2>/dev/null)
+    case "$billing_type" in
+      max*)       billing_label=" max" ;;
+      api*)       billing_label=" api" ;;
+    esac
+  fi
+  printf "%b\033[34m%s%s\033[0m" "$SEP" "$model" "$billing_label"
 fi
 
 # CONTEXT — "Xk/Yk" with color
@@ -250,7 +259,7 @@ if [ -n "$cost" ]; then
     tt_frac="${total#*.}"
     tt_frac2=$(printf "%.2s" "${tt_frac}00")
     total_today_fmt=$(printf "\$%s.%s" "$tt_whole" "$tt_frac2")
-    printf "%b\033[%sm%s %s/%s\033[0m" "$SEP" "$c" "$cost_fmt" "$agent_today_fmt" "$total_today_fmt"
+    printf "%b\033[%sm%s \xc2\xb7 %s/%s\033[0m" "$SEP" "$c" "$cost_fmt" "$agent_today_fmt" "$total_today_fmt"
   else
     printf "%b\033[%sm%s\033[0m" "$SEP" "$c" "$cost_fmt"
   fi
