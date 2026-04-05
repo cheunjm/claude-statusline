@@ -1,19 +1,43 @@
+queue_rules:
+  - name: default
+    merge_method: squash
+    update_method: rebase
+
 pull_request_rules:
-  - name: Automatic merge for dependabot PRs
+  - name: Keep branches up-to-date
+    conditions:
+      - base=main
+      - "-conflict"
+      - "-draft"
+    actions:
+      update: {}
+
+  - name: Queue dependabot PRs
     conditions:
       - author~=^dependabot\[bot\]$
-      - "#check-failure=0"
-      - "#check-pending=0"
+      - check-success=shellcheck
+      - check-success=test
+      - check-success=changeset
     actions:
-      merge:
-        method: squash
+      queue:
+        name: default
 
-  - name: Automatic merge for changeset release PRs
+  - name: Queue changeset release PRs
     conditions:
       - author=github-actions[bot]
       - head~=^changeset-release/
-      - "#check-failure=0"
-      - "#check-pending=0"
+      - check-success=shellcheck
+      - check-success=test
     actions:
-      merge:
-        method: squash
+      queue:
+        name: default
+
+  - name: Queue approved PRs
+    conditions:
+      - "#approved-reviews-by>=1"
+      - check-success=shellcheck
+      - check-success=test
+      - check-success=changeset
+    actions:
+      queue:
+        name: default
