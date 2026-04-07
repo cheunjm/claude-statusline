@@ -3,6 +3,11 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+    paths-ignore:
+      - ".changeset/**"
+      - "CHANGELOG.md"
+      - "**.md"
+      - ".github/**"
   workflow_dispatch:
 
 jobs:
