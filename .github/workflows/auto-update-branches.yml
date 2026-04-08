@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  pull-requests: write
+  contents: write
+
 jobs:
   update:
     uses: aramiworks/.github/.github/workflows/auto-update-branches.yml@main
