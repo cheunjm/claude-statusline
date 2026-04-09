@@ -11,3 +11,4 @@ permissions:
 jobs:
   update:
     uses: aramiworks/.github/.github/workflows/auto-update-branches.yml@main
+    secrets: inherit
