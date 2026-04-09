@@ -72,3 +72,21 @@ jobs:
           output=$(STATUSLINE_CONF=/tmp/test-statusline.conf echo '{"workspace":{"current_dir":"/tmp/test"},"model":{"display_name":"Claude Opus 4.6"},"context_window":{"used_percentage":42},"cost":{"total_cost_usd":1.23,"total_duration_ms":723000},"rate_limits":{"five_hour":{"used_percentage":34}}}' | bash statusline.sh)
           echo "$output"
           echo "PASS: config override"
+
+  ci-status:
+    name: CI
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - shellcheck
+      - test
+    if: always()
+    steps:
+      - name: Check all CI jobs
+        run: |
+          results='${{ toJSON(needs.*.result) }}'
+          if echo "$results" | grep -qE '"failure"|"cancelled"'; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi
+          echo "All CI jobs passed or were skipped"
