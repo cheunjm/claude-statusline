@@ -1,0 +1,11 @@
+name: CI Autofix
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  autofix:
+    uses: aramiworks/.github/.github/workflows/ci-autofix.yml@main
+    secrets: inherit
