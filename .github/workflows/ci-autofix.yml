@@ -13,5 +13,6 @@ jobs:
       issues: write
       actions: read
       id-token: write
+      statuses: read
     uses: aramiworks/.github/.github/workflows/ci-autofix.yml@main
     secrets: inherit
