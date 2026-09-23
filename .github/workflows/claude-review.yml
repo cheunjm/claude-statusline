@@ -15,7 +15,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       !contains(github.event.pull_request.labels.*.name, 'no-review') &&
       !endsWith(github.event.pull_request.user.login, '[bot]')
-    uses: aramiworks/.github/.github/workflows/claude-review.yml@main
+    uses: cheunjm/.github/.github/workflows/claude-review.yml@main
     secrets: inherit
     permissions:
       contents: read
