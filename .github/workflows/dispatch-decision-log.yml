@@ -33,8 +33,10 @@ jobs:
 
       - name: Extract Linear issue ID
         id: linear
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          ID=$(echo "${{ github.event.pull_request.title }}" | grep -oP '^\[([A-Z]+-\d+)\]' | tr -d '[]' || echo "")
+          ID=$(echo "$PR_TITLE" | grep -oP '^\[([A-Z]+-\d+)\]' | tr -d '[]' || echo "")
           echo "issue_id=$ID" >> $GITHUB_OUTPUT
 
       - name: Dispatch to engineering-log
@@ -54,7 +56,7 @@ jobs:
               "pr_title": ${{ toJSON(github.event.pull_request.title) }},
               "pr_body": ${{ toJSON(github.event.pull_request.body) }},
               "pr_url": "${{ github.event.pull_request.html_url }}",
-              "branch": "${{ github.event.pull_request.head.ref }}",
+              "branch": ${{ toJSON(github.event.pull_request.head.ref) }},
               "merged_by": "${{ github.event.pull_request.merged_by.login }}",
               "linear_issue": "${{ steps.linear.outputs.issue_id }}",
               "files_changed": ${{ github.event.pull_request.changed_files }},
